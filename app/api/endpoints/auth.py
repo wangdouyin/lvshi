@@ -2,7 +2,7 @@
 认证相关接口
 """
 import time
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, validator
 import re
@@ -13,7 +13,11 @@ from app.models.sms import Sms
 from app.utils.token import TokenManager
 from app.schemas import success, error
 
-router = APIRouter()
+# 登录路由
+login_router = APIRouter()
+
+# 退出登录路由
+logout_router = APIRouter()
 
 
 class LoginRequest(BaseModel):
@@ -36,7 +40,7 @@ class LoginRequest(BaseModel):
         return v
 
 
-@router.post("/")
+@login_router.post("/")
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     """
     短信验证码登录
@@ -92,3 +96,28 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={"token": token},
         message="登录成功"
     )
+
+
+@logout_router.post("/")
+def logout(token: str = Header(..., description="登录时获取的Token")):
+    """
+    退出登录
+    
+    请求头中携带 token 参数
+    
+    :return: {"code": 0, "message": "string", "data": {}}
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+    
+    # 删除 Redis 中的 token
+    result = TokenManager.delete(token)
+    
+    if result:
+        return success(message="退出登录成功")
+    else:
+        return error(code=500, message="退出登录失败")
+
+

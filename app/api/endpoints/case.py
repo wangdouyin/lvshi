@@ -257,3 +257,50 @@ def update_case(
     db.commit()
 
     return success(message="案件更新成功")
+
+
+class CaseTypeRequest(BaseModel):
+    """案件状态变更请求参数"""
+    case_id: int = Field(..., description="案件ID")
+    type: int = Field(..., description="状态：-1删除 0正常 1归档", ge=-1, le=1)
+
+
+@router.post("/case_type")
+def case_type(
+    request: CaseTypeRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    案件状态变更（删除/正常/归档）
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: {"code": 0, "message": "string", "data": {}}
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    # 查询案件
+    case = db.query(Case).filter(Case.case_id == request.case_id).first()
+    if not case:
+        return error(code=404, message="案件不存在")
+
+    # 已删除的案件不允许再操作
+    if case.type == -1:
+        return error(code=400, message="该案件已删除，无法操作")
+
+    # 不允许设置为当前相同的状态
+    if case.type == request.type:
+        type_map = {-1: "删除", 0: "正常", 1: "归档"}
+        return error(code=400, message=f"案件已是{type_map.get(request.type, '')}状态")
+
+    # 更新状态
+    case.type = request.type
+    db.commit()
+
+    type_map = {-1: "删除", 0: "恢复正常", 1: "归档"}
+    return success(message=f"案件{type_map.get(request.type, '')}成功")

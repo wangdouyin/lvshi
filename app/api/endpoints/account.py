@@ -239,3 +239,47 @@ def get_account_list(
         })
 
     return success(data=data)
+
+
+class DeleteAccountRequest(BaseModel):
+    """删除用户请求参数"""
+    account_id: int = Field(..., description="用户ID")
+
+
+@router.post("/delete_account")
+def delete_account(
+    request: DeleteAccountRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    根据ID删除用户
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: {"code": 0, "message": "string", "data": {}}
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    # 查询用户
+    account = db.query(Account).filter(Account.account_id == request.account_id).first()
+    if not account:
+        return error(code=404, message="用户不存在")
+
+    # 不允许删除自己
+    if user_data.get("account_id") == request.account_id:
+        return error(code=400, message="不允许删除自己")
+
+    # 已关闭的不重复操作
+    if account.close == 1:
+        return error(code=400, message="该用户已关闭")
+
+    # 关闭用户
+    account.close = 1
+    db.commit()
+
+    return success(message="用户删除成功")

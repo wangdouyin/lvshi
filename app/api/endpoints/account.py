@@ -2,6 +2,8 @@
 账号管理接口
 """
 import time
+from datetime import datetime
+from typing import List
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, validator
@@ -11,6 +13,9 @@ from app.core.database import get_db
 from app.models.account import Account
 from app.utils.token import TokenManager
 from app.schemas import success, error
+
+# 每页条数
+PAGE_SIZE = 20
 
 router = APIRouter()
 
@@ -161,7 +166,6 @@ def get_account(
         return error(code=404, message="用户不存在")
 
     # 格式化注册时间
-    from datetime import datetime
     sign_up_str = ""
     if account.sign_up_timestamp:
         sign_up_str = datetime.fromtimestamp(account.sign_up_timestamp).strftime("%Y-%m-%d %H:%M")
@@ -174,3 +178,64 @@ def get_account(
         "close": account.close or 0,
         "type": account.type or 0
     })
+
+
+class GetAccountListRequest(BaseModel):
+    """获取用户列表请求参数"""
+    page: int = Field(1, description="页数", ge=1)
+    type_array: List[int] = Field(..., description="用户类型数组，如 [0,1,2,3]")
+
+
+@router.post("/get_account_list")
+def get_account_list(
+    request: GetAccountListRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    获取用户列表
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: 用户列表
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    # 查询条件：按类型筛选
+    query = db.query(Account).filter(Account.type.in_(request.type_array))
+
+    # 按注册时间倒序
+    query = query.order_by(Account.account_id.desc())
+
+    # 总数
+    total = query.count()
+
+    # 分页
+    offset = (request.page - 1) * PAGE_SIZE
+    accounts = query.offset(offset).limit(PAGE_SIZE).all()
+
+    # 判断是否是最后一页
+    is_last_page = (offset + len(accounts)) >= total
+
+    # 组装返回数据
+    data = []
+    for i, a in enumerate(accounts):
+        is_last_item = 1 if (is_last_page and i == len(accounts) - 1) else 0
+        sign_up_str = ""
+        if a.sign_up_timestamp:
+            sign_up_str = datetime.fromtimestamp(a.sign_up_timestamp).strftime("%Y-%m-%d %H:%M")
+        data.append({
+            "account_id": a.account_id,
+            "name": a.name or "",
+            "mobile": a.mobile or "",
+            "sign_up_timestamp_string": sign_up_str,
+            "close": a.close or 0,
+            "type": a.type or 0,
+            "last_item": is_last_item
+        })
+
+    return success(data=data)

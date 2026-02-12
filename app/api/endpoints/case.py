@@ -3,7 +3,7 @@
 """
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
@@ -28,6 +28,19 @@ class CaseListRequest(BaseModel):
     sort: int = Field(0, description="0正序 1倒序", ge=0, le=1)
     filter: int = Field(0, description="0全部 1去掉归档 2归档", ge=0, le=2)
     page: int = Field(1, description="页数", ge=1)
+
+
+class AccountCaseItem(BaseModel):
+    """案件绑定人员"""
+    account_id: int = Field(..., description="账号表主键")
+    type: int = Field(..., description="角色类型 1是客户 2是律师 3是参与者", ge=1, le=3)
+
+
+class CreateCaseRequest(BaseModel):
+    """创建案件请求参数"""
+    title: str = Field(..., description="标题", min_length=1, max_length=200)
+    introduction: str = Field("", description="简介")
+    account_case: List[AccountCaseItem] = Field(..., description="案件绑定人员列表")
 
 
 def format_timestamp(ts: Optional[int]) -> str:
@@ -136,3 +149,52 @@ def case_list(
         })
 
     return success(data=data)
+
+
+@router.post("/create_case")
+def create_case(
+    request: CreateCaseRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    创建案件
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: {"code": 0, "message": "string", "data": {"case_id": 0}}
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    current_time = int(time.time())
+
+    # 1. 创建案件
+    case = Case(
+        title=request.title,
+        introduction=request.introduction,
+        timestamp=current_time,
+        progress=1,  # 默认进行中
+        type=0       # 默认正常
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+
+    # 2. 创建案件与人物绑定关系
+    for item in request.account_case:
+        account_case = AccountCase(
+            case_id=case.case_id,
+            account_id=item.account_id,
+            type=item.type
+        )
+        db.add(account_case)
+    db.commit()
+
+    return success(
+        data={"case_id": case.case_id},
+        message="案件创建成功"
+    )

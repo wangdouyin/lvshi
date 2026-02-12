@@ -36,6 +36,7 @@ def success(data: Any = None, message: str = "success") -> dict:
     }
 
 
+
 def error(code: int = -1, message: str = "error", data: Any = None) -> dict:
     """
     返回错误响应

@@ -198,3 +198,62 @@ def create_case(
         data={"case_id": case.case_id},
         message="案件创建成功"
     )
+
+
+class UpdateCaseRequest(BaseModel):
+    """更新案件请求参数"""
+    case_id: int = Field(..., description="案件ID")
+    title: str = Field(..., description="标题", min_length=1, max_length=200)
+    introduction: str = Field("", description="简介")
+    progress: int = Field(1, description="进度 1进行中 2完成", ge=1, le=2)
+    account_case: List[AccountCaseItem] = Field(..., description="案件绑定人员列表")
+
+
+@router.post("/update_case")
+def update_case(
+    request: UpdateCaseRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    更新编辑案件数据
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: {"code": 0, "message": "string", "data": {}}
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    # 1. 查询案件是否存在
+    case = db.query(Case).filter(Case.case_id == request.case_id).first()
+    if not case:
+        return error(code=404, message="案件不存在")
+
+    # 2. 更新案件信息
+    case.title = request.title
+    case.introduction = request.introduction
+    case.progress = request.progress
+
+    # 如果进度改为完成，记录完成时间
+    if request.progress == 2 and not case.complete_timestamp:
+        case.complete_timestamp = int(time.time())
+
+    # 3. 删除旧的绑定关系
+    db.query(AccountCase).filter(AccountCase.case_id == request.case_id).delete()
+
+    # 4. 创建新的绑定关系
+    for item in request.account_case:
+        account_case = AccountCase(
+            case_id=request.case_id,
+            account_id=item.account_id,
+            type=item.type
+        )
+        db.add(account_case)
+
+    db.commit()
+
+    return success(message="案件更新成功")

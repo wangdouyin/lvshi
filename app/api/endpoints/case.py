@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.models.case import Case
+from app.models.account_case import AccountCase
 from app.utils.token import TokenManager
 from app.schemas import success, error
 
@@ -65,8 +66,19 @@ def case_list(
     if not user_data:
         return error(code=401, message="Token无效或已过期")
 
-    # 基础查询：排除已删除的案件
-    query = db.query(Case).filter(Case.type != -1)
+    # 获取当前用户 ID
+    account_id = user_data.get("account_id")
+
+    # 查询该用户关联的案件ID
+    user_case_ids = db.query(AccountCase.case_id).filter(
+        AccountCase.account_id == account_id
+    ).subquery()
+
+    # 基础查询：只查该用户关联的案件，排除已删除的
+    query = db.query(Case).filter(
+        Case.case_id.in_(user_case_ids),
+        Case.type != -1
+    )
 
     # 筛选条件
     if request.filter == 1:

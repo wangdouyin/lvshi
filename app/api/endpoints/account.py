@@ -129,3 +129,48 @@ def update_account(
     db.commit()
 
     return success(message="用户编辑成功")
+
+
+class GetAccountRequest(BaseModel):
+    """获取用户请求参数"""
+    account_id: int = Field(..., description="用户ID")
+
+
+@router.post("/get_account")
+def get_account(
+    request: GetAccountRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    根据ID获取用户
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: 用户信息
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    # 查询用户
+    account = db.query(Account).filter(Account.account_id == request.account_id).first()
+    if not account:
+        return error(code=404, message="用户不存在")
+
+    # 格式化注册时间
+    from datetime import datetime
+    sign_up_str = ""
+    if account.sign_up_timestamp:
+        sign_up_str = datetime.fromtimestamp(account.sign_up_timestamp).strftime("%Y-%m-%d %H:%M")
+
+    return success(data={
+        "account_id": account.account_id,
+        "name": account.name or "",
+        "mobile": account.mobile or "",
+        "sign_up_timestamp_string": sign_up_str,
+        "close": account.close or 0,
+        "type": account.type or 0
+    })

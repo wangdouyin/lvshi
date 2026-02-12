@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.models.case import Case
 from app.models.account_case import AccountCase
+from app.models.account import Account
 from app.utils.token import TokenManager
 from app.schemas import success, error
 
@@ -304,3 +305,65 @@ def case_type(
 
     type_map = {-1: "删除", 0: "恢复正常", 1: "归档"}
     return success(message=f"案件{type_map.get(request.type, '')}成功")
+
+
+class CaseDetailsRequest(BaseModel):
+    """案件详情请求参数"""
+    case_id: int = Field(..., description="案件ID")
+
+
+@router.post("/case_details")
+def case_details(
+    request: CaseDetailsRequest,
+    db: Session = Depends(get_db),
+    token: str = Header(..., description="登录时获取的Token")
+):
+    """
+    获取案件详情
+
+    :param request: 请求参数
+    :param db: 数据库会话
+    :param token: 认证Token
+    :return: 案件详情数据
+    """
+    # 验证 token
+    user_data = TokenManager.verify(token)
+    if not user_data:
+        return error(code=401, message="Token无效或已过期")
+
+    # 查询案件
+    case = db.query(Case).filter(Case.case_id == request.case_id).first()
+    if not case:
+        return error(code=404, message="案件不存在")
+
+    # 查询案件绑定的人员，关联 account 表获取姓名
+    bindings = db.query(AccountCase, Account.name).join(
+        Account, AccountCase.account_id == Account.account_id
+    ).filter(
+        AccountCase.case_id == request.case_id
+    ).all()
+
+    # 组装绑定人员数据
+    account_case_list = []
+    for binding, name in bindings:
+        account_case_list.append({
+            "account_id": binding.account_id,
+            "type": binding.type,
+            "name": name or ""
+        })
+
+    # 组装返回数据
+    data = {
+        "case_id": case.case_id,
+        "title": case.title or "",
+        "introduction": case.introduction or "",
+        "timestamp_string": format_timestamp(case.timestamp),
+        "complete_timestamp_string": format_timestamp(case.complete_timestamp),
+        "lawyer_last_timestamp_string": format_timestamp(case.lawyer_last_timestamp),
+        "lawyer_last_timestamp_interval_h": calc_interval_hours(case.lawyer_last_timestamp),
+        "progress": case.progress or 0,
+        "type": case.type or 0,
+        "account_case": account_case_list
+    }
+
+    return success(data=data)

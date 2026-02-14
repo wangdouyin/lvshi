@@ -26,6 +26,8 @@ class CaseResponse(BaseModel):
     introduction: Optional[str]
     timestamp: Optional[int]
     complete_timestamp: Optional[int]
+    lawyer_last_timestamp: Optional[int]
+    update_timestamp: Optional[int]
     progress: int
     type: int
     

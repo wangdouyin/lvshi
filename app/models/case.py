@@ -20,5 +20,6 @@ class Case(Base):
     timestamp = Column(Integer, nullable=True, comment="创建时间")
     complete_timestamp = Column(Integer, nullable=True, comment="完成时间")
     lawyer_last_timestamp = Column(Integer, nullable=True, comment="律师最后回复时间")
+    update_timestamp = Column(Integer, nullable=True, comment="消息更新时间")
     progress = Column(Integer, default=1, comment="进度 1进行中 2完成")
     type = Column(Integer, default=0, comment="状态 -1删除 0正常 1归档")

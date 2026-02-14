@@ -25,7 +25,7 @@ PAGE_SIZE = 20
 class CaseListRequest(BaseModel):
     """获取案件列表请求参数"""
     keyword: str = Field("", description="搜索词")
-    sort_method: int = Field(0, description="排序依据：0按创建时间 1按完成时间 3按律师最后回复时间", ge=0, le=3)
+    sort_method: int = Field(0, description="排序依据：0按创建时间 1按完成时间 2按消息更新时间 3按律师最后回复时间", ge=0, le=3)
     sort: int = Field(0, description="0正序 1倒序", ge=0, le=1)
     filter: int = Field(0, description="0全部 1去掉归档 2归档", ge=0, le=2)
     page: int = Field(1, description="页数", ge=1)
@@ -112,6 +112,8 @@ def case_list(
     # 排序字段
     if request.sort_method == 1:
         sort_field = Case.complete_timestamp
+    elif request.sort_method == 2:
+        sort_field = Case.update_timestamp
     elif request.sort_method == 3:
         sort_field = Case.lawyer_last_timestamp
     else:
@@ -144,6 +146,8 @@ def case_list(
             "timestamp_string": format_timestamp(c.timestamp),
             "lawyer_last_timestamp_string": format_timestamp(c.lawyer_last_timestamp),
             "lawyer_last_timestamp_interval_h": calc_interval_hours(c.lawyer_last_timestamp),
+            "update_timestamp": c.update_timestamp or 0,
+            "update_timestamp_string": format_timestamp(c.update_timestamp),
             "progress": c.progress or 0,
             "type": c.type or 0,
             "last_item": is_last_item
@@ -178,6 +182,7 @@ def create_case(
         title=request.title,
         introduction=request.introduction,
         timestamp=current_time,
+        update_timestamp=current_time,
         progress=1,  # 默认进行中
         type=0       # 默认正常
     )
@@ -361,6 +366,8 @@ def case_details(
         "complete_timestamp_string": format_timestamp(case.complete_timestamp),
         "lawyer_last_timestamp_string": format_timestamp(case.lawyer_last_timestamp),
         "lawyer_last_timestamp_interval_h": calc_interval_hours(case.lawyer_last_timestamp),
+        "update_timestamp": case.update_timestamp or 0,
+        "update_timestamp_string": format_timestamp(case.update_timestamp),
         "progress": case.progress or 0,
         "type": case.type or 0,
         "account_case": account_case_list
